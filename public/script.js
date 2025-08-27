@@ -4,8 +4,8 @@ const engine = Engine.create();
 const { world } = engine;
 
 const canvasContainer = document.getElementById('canvas-container');
-const width = canvasContainer.clientWidth;
-const height = 500;
+const width = 400;
+const height = 600;
 
 const render = Render.create({
   element: canvasContainer,
@@ -14,7 +14,7 @@ const render = Render.create({
     width,
     height,
     wireframes: false,
-    background: '#0b0f14'
+    background: '#333'
   }
 });
 
@@ -22,63 +22,101 @@ Render.run(render);
 Runner.run(Runner.create(), engine);
 
 // Player
-const player = Bodies.rectangle(width / 2, height - 50, 50, 50, {
-  isStatic: true,
+const player = Bodies.rectangle(width / 2, height - 100, 20, 50, {
+  inertia: Infinity, // To prevent rotation
   render: {
-    sprite: {
-      texture: 'https://emojicdn.elk.sh/😀',
-      xScale: 1,
-      yScale: 1
-    }
+    fillStyle: '#fff'
   }
 });
 World.add(world, player);
 
-let playerDirection = 1;
+let onGround = false;
 
-document.getElementById('move-button').addEventListener('click', () => {
-  playerDirection *= -1;
-});
+// Platforms
+const platforms = [];
+let platformY = height - 50;
 
-// Falling Emojis
-const emojis = ['😂', '😍', '😭', '🤔', '🔥', '👍', '❤️', '🎉', '💯'];
-
-function createFallingEmoji() {
-  const x = Math.random() * width;
-  const emoji = emojis[Math.floor(Math.random() * emojis.length)];
-  const body = Bodies.circle(x, -50, 25, {
-    restitution: 0.8,
+function createPlatform(x, y) {
+  const platform = Bodies.rectangle(x, y, 100, 20, {
+    isStatic: true,
     render: {
-      sprite: {
-        texture: `https://emojicdn.elk.sh/${emoji}`,
-        xScale: 0.5,
-        yScale: 0.5
-      }
+      fillStyle: '#8aa0b8'
     }
   });
-  World.add(world, body);
+  platforms.push(platform);
+  World.add(world, platform);
 }
 
-setInterval(createFallingEmoji, 500);
+// Initial platform
+createPlatform(width / 2, platformY);
+
+// Generate more platforms
+for (let i = 0; i < 10; i++) {
+  platformY -= 100;
+  createPlatform(Math.random() * width, platformY);
+}
+
+// Controls
+const keys = {};
+document.addEventListener('keydown', e => keys[e.code] = true);
+document.addEventListener('keyup', e => keys[e.code] = false);
 
 // Game Loop
+let score = 0;
+let scrollSpeed = 1;
+
 Events.on(engine, 'beforeUpdate', () => {
-  const newX = player.position.x + playerDirection * 5;
-  if (newX > 25 && newX < width - 25) {
-    Body.setPosition(player, { x: newX, y: player.position.y });
+  // Movement
+  if (keys.ArrowLeft) {
+    Body.setVelocity(player, { x: -5, y: player.velocity.y });
+  }
+  if (keys.ArrowRight) {
+    Body.setVelocity(player, { x: 5, y: player.velocity.y });
+  }
+  if (keys.Space && onGround) {
+    Body.setVelocity(player, { x: player.velocity.x, y: -12 });
+    onGround = false;
+  }
+
+  // Scrolling
+  platforms.forEach(platform => {
+    Body.translate(platform, { x: 0, y: scrollSpeed });
+  });
+
+  // Update score
+  score += scrollSpeed;
+  document.querySelector('h1').textContent = `Icy Tower - Score: ${Math.floor(score)}`;
+
+  // Generate new platforms
+  if (platforms[platforms.length - 1].position.y > 0) {
+    platformY = platforms[platforms.length - 1].position.y - 100;
+    createPlatform(Math.random() * width, platformY);
+  }
+
+  // Remove old platforms
+  platforms.forEach((platform, index) => {
+    if (platform.position.y > height + 50) {
+      World.remove(world, platform);
+      platforms.splice(index, 1);
+    }
+  });
+
+  // Game Over
+  if (player.position.y > height) {
+    alert('Game Over!');
+    Engine.clear(engine);
+    Render.stop(render);
+    Runner.stop(Runner.create());
   }
 });
 
-// Game Over
+// Collision Detection
 Events.on(engine, 'collisionStart', event => {
   const pairs = event.pairs;
   for (let i = 0; i < pairs.length; i++) {
     const pair = pairs[i];
     if (pair.bodyA === player || pair.bodyB === player) {
-      alert('Game Over!');
-      Engine.clear(engine);
-      Render.stop(render);
-      Runner.stop(Runner.create());
+      onGround = true;
     }
   }
 });
